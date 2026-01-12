@@ -79,7 +79,7 @@
     .kpi .vals{font-size:16px;font-weight:700;margin-top:4px}
 
     .mini-table{width:100%;border-collapse:collapse;margin-top:8px}
-    .mini-table th,.mini-table td{padding:6px 8px;border-top:1px solid var(--border);text-align:left} /* ← levé zarovnání pod hlavičkami */
+    .mini-table th,.mini-table td{padding:6px 8px;border-top:1px solid var(--border);text-align:left}
     .mini-table th{text-align:left;color:#374151;background:#f8fafc}
     .good{color:var(--kpiUp);font-weight:700}
     .bad{color:var(--kpiDown);font-weight:700}
@@ -99,7 +99,8 @@
       <div class="control">
         <label for="file">Nahrát Excel (.xls / .xlsx / .xlsm / .csv)</label>
         <div class="file-control">
-          <input type="file" id="file" accept=".xlsx,.xls,.xlsm,.csv" />
+          <!-- INLINE onchange jako jistota -->
+          <input type="file" id="file" accept=".xlsx,.xls,.xlsm,.csv" onchange="loadSelectedFile()" />
         </div>
 
         <div class="controls-row">
@@ -174,7 +175,7 @@
           <h3>Meziroční změna (2025 vs 2024)</h3>
           <div class="vals" id="kpiVals">—</div>
 
-          <!-- Mini tabulka: Metrika × (2024, 2025, Rozdíl) -->
+          <!-- Mini tabulka: Metrika × (2024, 2025, Rozdíl s %) -->
           <table class="mini-table" id="deltaTable">
             <thead>
               <tr>
@@ -225,7 +226,7 @@
 
   <!-- ========== SEKVENČNÍ NAČÍTÁNÍ KNIHOVEN (Chart, XLSX, jsPDF) ========== -->
   <script>
-    // Chart.js: jsDelivr → CDNJS → lokální fallback
+    // Chart.js loader
     var chartReadyPromise = (function(){
       return new Promise(function(resolve, reject){
         var sources = [
@@ -243,7 +244,7 @@
       });
     })();
 
-    // XLSX: lokálně → CDN (unpkg) fallback
+    // XLSX loader
     var xlsxReadyPromise = (function(){
       return new Promise(function(resolve, reject){
         function ok(){ resolve('ok'); }
@@ -259,7 +260,7 @@
       });
     })();
 
-    // jsPDF: jsDelivr → CDNJS → lokální fallback
+    // jsPDF loader
     var jsPdfReadyPromise = (function(){
       return new Promise(function(resolve, reject){
         function ready(){ return !!(window.jspdf && window.jspdf.jsPDF); }
@@ -274,7 +275,7 @@
           if (ready()) { resolve('ok'); return; }
           if (i >= sources.length) { reject(new Error('jsPDF se nepodařilo načíst')); return; }
           var s = document.createElement('script'); s.src = sources[i++]; s.async = true;
-          s.onload = function(){ setTimeout(()=> ready()?resolve('ok'):tryNext(), 50); };
+          s.onload = function(){ setTimeout(function(){ ready()?resolve('ok'):tryNext(); }, 50); };
           s.onerror = tryNext; document.head.appendChild(s);
         }
         tryNext();
@@ -284,87 +285,88 @@
 
   <!-- ========== HLAVNÍ LOGIKA (window.*) ========== -->
   <script>
-    const fmtInt = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 0 });
-    const fmtCZK = new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' });
+    var fmtInt = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 0 });
+    var fmtCZK = new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' });
 
-    let suppliers = []; // { name, rev24, ord24, rev25, ord25 }
-    let chartOrders = null, chartRevenue = null, chartLine = null;
-    let tableSort = { key: 'name', dir: 'asc' };
+    var suppliers = []; // { name, rev24, ord24, rev25, ord25 }
+    var chartOrders = null, chartRevenue = null, chartLine = null;
+    var tableSort = { key: 'name', dir: 'asc' };
 
-    const fileEl      = document.getElementById('file');
-    const fileInfoEl  = document.getElementById('fileInfo');
-    const statusEl    = document.getElementById('status');
-    const errorEl     = document.getElementById('error');
-    const selEl       = document.getElementById('supplierSel');
-    const tableInfoEl = document.getElementById('tableInfo');
-    const tbodyEl     = document.querySelector('#table tbody');
+    var fileEl      = document.getElementById('file');
+    var fileInfoEl  = document.getElementById('fileInfo');
+    var statusEl    = document.getElementById('status');
+    var errorEl     = document.getElementById('error');
+    var selEl       = document.getElementById('supplierSel');
+    var tableInfoEl = document.getElementById('tableInfo');
+    var tbodyEl     = document.querySelector('#table tbody');
 
-    const splitWrap   = document.getElementById('splitWrap');
-    const lineWrap    = document.getElementById('lineWrap');
-    const chartOrdersCanvas  = document.getElementById('chartOrders');
-    const chartRevenueCanvas = document.getElementById('chartRevenue');
-    const chartLineCanvas    = document.getElementById('chartLine');
+    var splitWrap   = document.getElementById('splitWrap');
+    var lineWrap    = document.getElementById('lineWrap');
+    var chartOrdersCanvas  = document.getElementById('chartOrders');
+    var chartRevenueCanvas = document.getElementById('chartRevenue');
+    var chartLineCanvas    = document.getElementById('chartLine');
 
-    const kpiBox      = document.getElementById('kpiBox');
-    const kpiVals     = document.getElementById('kpiVals');
+    var kpiBox      = document.getElementById('kpiBox');
+    var kpiVals     = document.getElementById('kpiVals');
 
-    const mtRev24El   = document.getElementById('mt_revenue_2024');
-    const mtRev25El   = document.getElementById('mt_revenue_2025');
-    const mtRevDiffEl = document.getElementById('mt_revenue_delta');
-    const mtOrd24El   = document.getElementById('mt_orders_2024');
-    const mtOrd25El   = document.getElementById('mt_orders_2025');
-    const mtOrdDiffEl = document.getElementById('mt_orders_delta');
+    var mtRev24El   = document.getElementById('mt_revenue_2024');
+    var mtRev25El   = document.getElementById('mt_revenue_2025');
+    var mtRevDiffEl = document.getElementById('mt_revenue_delta');
+    var mtOrd24El   = document.getElementById('mt_orders_2024');
+    var mtOrd25El   = document.getElementById('mt_orders_2025');
+    var mtOrdDiffEl = document.getElementById('mt_orders_delta');
 
-    const shareInfoEl = document.getElementById('shareInfo');
-    const chartModeEl = document.getElementById('chartMode');
+    var shareInfoEl = document.getElementById('shareInfo');
+    var chartModeEl = document.getElementById('chartMode');
 
-    // třídění záhlaví
-    Array.from(document.querySelectorAll('#table thead th.sortable')).forEach(th=>{
-      th.addEventListener('click', ()=>{
-        const key = th.getAttribute('data-key');
-        if (!key) return;
-        tableSort.dir = (tableSort.key === key && tableSort.dir === 'asc') ? 'desc' : 'asc';
-        tableSort.key = key;
-        renderTable();
-        Array.from(document.querySelectorAll('#table thead th .sort-ind')).forEach(i => i.textContent = '');
-        const ind = th.querySelector('.sort-ind');
-        if (ind) ind.textContent = tableSort.dir === 'asc' ? '▲' : '▼';
-      });
-    });
+    // Fallback listener (kromě inline onchange)
+    if (fileEl && fileEl.addEventListener){
+      fileEl.addEventListener('change', function(){ window.loadSelectedFile(); });
+    }
 
-    fileEl.addEventListener('change', ()=> window.loadSelectedFile());
-
-    // Sdílená data z URL
+    // Načtení sdílených dat z URL (?s=...)
     (function loadSharedFromURL(){
-      const s = new URLSearchParams(location.search).get('s');
+      var params = new URLSearchParams(location.search);
+      var s = params.get('s');
       if (!s) return;
       try {
-        const obj = JSON.parse(decodeURIComponent(s));
+        var obj = JSON.parse(decodeURIComponent(s));
         if (!obj || !obj.name) return;
         suppliers = [obj];
         renderTable();
         selEl.innerHTML = '<option value="">— vyber —</option>' +
-          suppliers.map(d => `<option value="${escapeHtml(d.name)}">${escapeHtml(d.name)}</option>`).join('');
+          suppliers.map(function(d){ return '<option value="'+escapeHtml(d.name)+'">'+escapeHtml(d.name)+'</option>'; }).join('');
         selEl.disabled = suppliers.length === 0;
         selEl.value = obj.name;
         renderView();
         shareInfoEl.textContent = 'Načteno ze sdílené URL.';
-      } catch(e) { console.warn('Nepodařilo se načíst sdílená data z URL:', e); }
+      } catch(e) {
+        console.warn('Nepodařilo se načíst sdílená data z URL:', e);
+      }
     })();
 
     window.loadSelectedFile = function(){
-      const f = fileEl.files?.[0] ?? null;
-      if (!f){ statusEl.textContent = 'Stav: nejprve vyber soubor (.xls/.xlsx/.xlsm/.csv)'; return; }
-      fileInfoEl.textContent = 'Soubor: ' + f.name + ' (' + fmtInt.format(f.size) + ' B)';
-      statusEl.textContent = 'Stav: načítám XLSX…';
+      try{
+        var f = (fileEl && fileEl.files && fileEl.files[0]) ? fileEl.files[0] : null;
+        if (!f){
+          statusEl.textContent = 'Stav: nejprve vyber soubor (.xls/.xlsx/.xlsm/.csv)';
+          return;
+        }
+        fileInfoEl.textContent = 'Soubor: ' + f.name + ' (' + fmtInt.format(f.size) + ' B)';
+        statusEl.textContent = 'Stav: soubor zvolen, načítám XLSX…';
 
-      xlsxReadyPromise.then(()=>{
-        statusEl.textContent = 'Stav: zpracovávám data…';
-        processFile(f);
-      }).catch(e=>{
-        errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=52) nebo prověř síť.';
-        statusEl.textContent = 'Stav: chyba.'; console.error(e);
-      });
+        xlsxReadyPromise.then(function(){
+          statusEl.textContent = 'Stav: zpracovávám data…';
+          processFile(f);
+        }).catch(function(e){
+          errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=53) nebo prověř síť.';
+          statusEl.textContent = 'Stav: chyba.';
+          console.error(e);
+        });
+      }catch(ex){
+        errorEl.textContent = 'Chyba při přípravě nahrání: ' + ex.message;
+        statusEl.textContent = 'Stav: chyba.';
+      }
     };
 
     window.processFile = function(file){
@@ -372,32 +374,32 @@
       try{
         if (typeof XLSX === 'undefined') throw new Error('Knihovna XLSX není načtená');
 
-        const reader = new FileReader();
+        var reader = new FileReader();
         reader.onload = function(ev){
           try{
-            const wb = XLSX.read(ev.target.result, { type:'array' });
-            const sheetName = wb.SheetNames[0];
-            const ws = wb.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+            var wb = XLSX.read(ev.target.result, { type:'array' });
+            var sheetName = wb.SheetNames[0];
+            var ws = wb.Sheets[sheetName];
+            var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
 
             suppliers = [];
-            const startIdx = detectHeaderStart(rows);
-            for (let i = startIdx; i < rows.length; i++){
-              const r = rows[i];
+            var startIdx = detectHeaderStart(rows);
+            for (var i = startIdx; i < rows.length; i++){
+              var r = rows[i];
               if (!r || r.length < 5) continue;
-              const name  = String(r[0] || '').trim();
-              const rev24 = toNum(r[1]);
-              const ord24 = toNum(r[2]);
-              const rev25 = toNum(r[3]);
-              const ord25 = toNum(r[4]);
+              var name  = String(r[0] || '').trim();
+              var rev24 = toNum(r[1]);
+              var ord24 = toNum(r[2]);
+              var rev25 = toNum(r[3]);
+              var ord25 = toNum(r[4]);
               if (!name) continue;
-              suppliers.push({ name, rev24, ord24, rev25, ord25 });
+              suppliers.push({ name: name, rev24: rev24, ord24: ord24, rev25: rev25, ord25: ord25 });
             }
 
             renderTable();
 
             selEl.innerHTML = '<option value="">— vyber —</option>' +
-              suppliers.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
+              suppliers.map(function(s){ return '<option value="'+escapeHtml(s.name)+'">'+escapeHtml(s.name)+'</option>'; }).join('');
             selEl.disabled = suppliers.length === 0;
 
             tableInfoEl.textContent = 'Načteno dodavatelů: ' + fmtInt.format(suppliers.length) + ' · List: ' + sheetName;
@@ -422,18 +424,19 @@
 
     /* TABULKA + meziroční změny (2025 vs 2024) + třídění */
     window.renderTable = function(){
-      let rows = suppliers.map(s => {
-        const deltaRev = s.rev25 - s.rev24;
-        const pctRev   = s.rev24 ? (deltaRev / s.rev24 * 100) : null;
-        const deltaOrd = s.ord25 - s.ord24;
-        const pctOrd   = s.ord24 ? (deltaOrd / s.ord24 * 100) : null;
-        return { ...s, deltaRev, pctRev, deltaOrd, pctOrd };
+      var rows = suppliers.map(function(s){
+        var deltaRev = s.rev25 - s.rev24;
+        var pctRev   = s.rev24 ? (deltaRev / s.rev24 * 100) : null;
+        var deltaOrd = s.ord25 - s.ord24;
+        var pctOrd   = s.ord24 ? (deltaOrd / s.ord24 * 100) : null;
+        return { name:s.name, rev24:s.rev24, ord24:s.ord24, rev25:s.rev25, ord25:s.ord25,
+                 deltaRev:deltaRev, pctRev:pctRev, deltaOrd:deltaOrd, pctOrd:pctOrd };
       });
 
-      const dir = tableSort.dir === 'asc' ? 1 : -1;
-      rows.sort((a,b)=>{
-        const key = tableSort.key || 'name';
-        const va = a[key]; const vb = b[key];
+      var dir = tableSort.dir === 'asc' ? 1 : -1;
+      rows.sort(function(a,b){
+        var key = tableSort.key || 'name';
+        var va = a[key]; var vb = b[key];
         if (va == null && vb == null) return 0;
         if (va == null) return 1;
         if (vb == null) return -1;
@@ -443,55 +446,53 @@
         return dir * (va - vb);
       });
 
-      const html = rows.map(s => `
-        <tr>
-          <td>${escapeHtml(s.name)}</td>
-          <td class="num">${fmtCZK.format(s.rev24)}</td>
-          <td class="num">${fmtInt.format(s.ord24)}</td>
-          <td class="num">${fmtCZK.format(s.rev25)}</td>
-          <td class="num">${fmtInt.format(s.ord25)}</td>
-          <td class="num">${fmtCZK.format(s.deltaRev)}</td>
-          <td class="num">${s.pctRev==null?'—':((s.pctRev>=0?'+':'')+s.pctRev.toFixed(1)+' %')}</td>
-          <td class="num">${fmtInt.format(s.deltaOrd)} ks</td>
-          <td class="num">${s.pctOrd==null?'—':((s.pctOrd>=0?'+':'')+s.pctOrd.toFixed(1)+' %')}</td>
-        </tr>
-      `).join('');
+      var html = rows.map(function(s){
+        return (
+        '<tr>' +
+          '<td>' + escapeHtml(s.name) + '</td>' +
+          '<td class="num">' + fmtCZK.format(s.rev24) + '</td>' +
+          '<td class="num">' + fmtInt.format(s.ord24) + '</td>' +
+          '<td class="num">' + fmtCZK.format(s.rev25) + '</td>' +
+          '<td class="num">' + fmtInt.format(s.ord25) + '</td>' +
+          '<td class="num">' + fmtCZK.format(s.deltaRev) + '</td>' +
+          '<td class="num">' + (s.pctRev==null ? '—' : ((s.pctRev>=0?'+':'')+s.pctRev.toFixed(1)+' %')) + '</td>' +
+          '<td class="num">' + fmtInt.format(s.deltaOrd) + ' ks</td>' +
+          '<td class="num">' + (s.pctOrd==null ? '—' : ((s.pctOrd>=0?'+':'')+s.pctOrd.toFixed(1)+' %')) + '</td>' +
+        '</tr>');
+      }).join('');
       tbodyEl.innerHTML = html;
     };
 
-    /* Hlavní KPI mini-tab + grafy */
+    /* KPI mini-tab + grafy */
     window.renderView = function(){
-      const name = selEl.value;
+      var name = selEl.value;
       if (!name) return;
-      const s = suppliers.find(x => x.name === name);
+      var s = null;
+      for (var i=0;i<suppliers.length;i++){ if (suppliers[i].name===name){ s=suppliers[i]; break; } }
       if (!s) return;
 
-      // Δ + %
-      const dRev = s.rev25 - s.rev24;
-      const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
-      const dOrd = s.ord25 - s.ord24;
-      const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
+      var dRev = s.rev25 - s.rev24;
+      var pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
+      var dOrd = s.ord25 - s.ord24;
+      var pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
 
-      // horní souhrnní řádek (zůstává informativně)
       kpiVals.textContent =
-        `2024 — Obrat: ${fmtCZK.format(s.rev24)}, Objednávky: ${fmtInt.format(s.ord24)} ks | ` +
-        `2025 — Obrat: ${fmtCZK.format(s.rev25)}, Objednávky: ${fmtInt.format(s.ord25)} ks`;
+        '2024 — Obrat: ' + fmtCZK.format(s.rev24) + ', Objednávky: ' + fmtInt.format(s.ord24) + ' ks | ' +
+        '2025 — Obrat: ' + fmtCZK.format(s.rev25) + ', Objednávky: ' + fmtInt.format(s.ord25) + ' ks';
 
-      // mini-tab: absolutní rozdíl + procento v závorkách, barva podle znaménka
       mtRev24El.textContent   = fmtCZK.format(s.rev24);
       mtRev25El.textContent   = fmtCZK.format(s.rev25);
-      mtRevDiffEl.textContent = `${fmtCZK.format(dRev)}${pRev==null?'':` (${pRev>=0?'+':''}${pRev.toFixed(1)}%)`}`;
+      mtRevDiffEl.textContent = fmtCZK.format(dRev) + (pRev==null?'':(' ('+(pRev>=0?'+':'')+pRev.toFixed(1)+'%)'));
       mtRevDiffEl.className   = (dRev >= 0 ? 'good' : 'bad');
 
-      mtOrd24El.textContent   = `${fmtInt.format(s.ord24)} ks`;
-      mtOrd25El.textContent   = `${fmtInt.format(s.ord25)} ks`;
-      mtOrdDiffEl.textContent = `${fmtInt.format(dOrd)} ks${pOrd==null?'':` (${pOrd>=0?'+':''}${pOrd.toFixed(1)}%)`}`;
+      mtOrd24El.textContent   = fmtInt.format(s.ord24) + ' ks';
+      mtOrd25El.textContent   = fmtInt.format(s.ord25) + ' ks';
+      mtOrdDiffEl.textContent = fmtInt.format(dOrd) + ' ks' + (pOrd==null?'':(' ('+(pOrd>=0?'+':'')+pOrd.toFixed(1)+'%)'));
       mtOrdDiffEl.className   = (dOrd >= 0 ? 'good' : 'bad');
 
       kpiBox.hidden = false;
 
-      // Grafy dle režimu
-      const mode = chartModeEl.value;
+      var mode = chartModeEl.value;
       if (mode === 'split'){
         splitWrap.style.display = '';
         lineWrap.style.display = 'none';
@@ -504,16 +505,16 @@
     };
 
     function renderSplitCharts(s){
-      chartReadyPromise.then(()=>{
+      chartReadyPromise.then(function(){
         if (typeof Chart === 'undefined'){ errorEl.textContent = 'Chart.js není dostupná.'; return; }
-        const labels = ['2024','2025'];
-        const thickness = parseInt(getCSS('--barThickness')) || 36;
+        var labels = ['2024','2025'];
+        var thickness = parseInt(getCSS('--barThickness')) || 36;
 
         if (chartOrders) chartOrders.destroy();
         chartOrders = new Chart(chartOrdersCanvas, {
           type:'bar',
           data:{
-            labels,
+            labels: labels,
             datasets:[{
               label:'Objednávky',
               data:[s.ord24, s.ord25],
@@ -525,7 +526,7 @@
           },
           options:{
             plugins:{ legend:{ display:false }, tooltip:{
-              callbacks:{ label:(it)=> 'Objednávky: ' + fmtInt.format(it.parsed.y) + ' ks' }
+              callbacks:{ label:function(it){ return 'Objednávky: ' + fmtInt.format(it.parsed.y) + ' ks'; } }
             }},
             scales:{ x:{ title:{display:true,text:''}}, y:{ title:{display:true,text:'ks'}, beginAtZero:true } }
           }
@@ -535,7 +536,7 @@
         chartRevenue = new Chart(chartRevenueCanvas, {
           type:'bar',
           data:{
-            labels,
+            labels: labels,
             datasets:[{
               label:'Obrat',
               data:[s.rev24, s.rev25],
@@ -547,7 +548,7 @@
           },
           options:{
             plugins:{ legend:{ display:false }, tooltip:{
-              callbacks:{ label:(it)=> 'Obrat: ' + fmtCZK.format(it.parsed.y) }
+              callbacks:{ label:function(it){ return 'Obrat: ' + fmtCZK.format(it.parsed.y); } }
             }},
             scales:{ x:{ title:{display:true,text:''}}, y:{ title:{display:true,text:'Kč'}, beginAtZero:true } }
           }
@@ -556,13 +557,13 @@
     }
 
     function renderLineChart(s){
-      chartReadyPromise.then(()=>{
+      chartReadyPromise.then(function(){
         if (typeof Chart === 'undefined'){ errorEl.textContent = 'Chart.js není dostupná.'; return; }
-        const labels = ['2024','2025'];
+        var labels = ['2024','2025'];
         if (chartLine) chartLine.destroy();
         chartLine = new Chart(chartLineCanvas, {
           data:{
-            labels,
+            labels: labels,
             datasets:[
               { type:'line', label:'Objednávky (ks)', data:[s.ord24, s.ord25],
                 borderColor:getCSS('--blue25'), backgroundColor:getCSS('--blue24'),
@@ -579,9 +580,9 @@
               tooltip:{
                 callbacks:{
                   label:function(it){
-                    const lbl = it.dataset.label || '';
-                    const v = it.parsed.y;
-                    if (lbl.includes('Obrat')) return lbl + ': ' + fmtCZK.format(v);
+                    var lbl = it.dataset.label || '';
+                    var v = it.parsed.y;
+                    if (lbl.indexOf('Obrat') !== -1) return lbl + ': ' + fmtCZK.format(v);
                     return lbl + ': ' + fmtInt.format(v) + ' ks';
                   }
                 }
@@ -598,28 +599,29 @@
       });
     }
 
-    // Export PDF – sloupec „Rozdíl“ obsahuje absolutní hodnotu + % v závorkách; barva rozdílu (zelená/červená)
+    // Export PDF – rozdíly v závorkách s %, barvy dle znaménka
     window.exportSupplierPDF = function(){
-      const name = selEl.value;
+      var name = selEl.value;
       if (!name){ alert('Vyber nejdřív dodavatele.'); return; }
-      const s = suppliers.find(x => x.name === name);
+      var s = null;
+      for (var i=0;i<suppliers.length;i++){ if (suppliers[i].name===name){ s=suppliers[i]; break; } }
       if (!s){ alert('Data dodavatele nenalezena.'); return; }
 
       renderView();
 
-      jsPdfReadyPromise.then(()=>{
-        setTimeout(async ()=>{
+      jsPdfReadyPromise.then(function(){
+        setTimeout(function(){
           try{
-            const { jsPDF } = window.jspdf || {};
+            var jsPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : null;
             if (!jsPDF){ throw new Error('jsPDF stále není dostupný'); }
 
-            const dRev = s.rev25 - s.rev24;
-            const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
-            const dOrd = s.ord25 - s.ord24;
-            const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
+            var dRev = s.rev25 - s.rev24;
+            var pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
+            var dOrd = s.ord25 - s.ord24;
+            var pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
 
-            const mode = chartModeEl.value;
-            let img1=null, img2=null;
+            var mode = chartModeEl.value;
+            var img1=null, img2=null;
             if (mode === 'split'){
               img1 = document.getElementById('chartOrders').toDataURL('image/png',1.0);
               img2 = document.getElementById('chartRevenue').toDataURL('image/png',1.0);
@@ -627,32 +629,33 @@
               img1 = document.getElementById('chartLine').toDataURL('image/png',1.0);
             }
 
-            const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
-            const pageW = doc.internal.pageSize.getWidth();
-            const margin = 15;
-            let y = margin;
+            var doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+            var pageW = doc.internal.pageSize.getWidth();
+            var margin = 15;
+            var y = margin;
 
             doc.setFont('helvetica','bold'); doc.setFontSize(18);
-            doc.text(`Karta dodavatele — ${name}`, margin, y);
+            doc.text('Karta dodavatele — ' + name, margin, y);
             doc.setFont('helvetica','normal'); doc.setFontSize(10);
-            const dt = new Date();
-            doc.text(`Vygenerováno: ${dt.toLocaleDateString('cs-CZ')} ${dt.toLocaleTimeString('cs-CZ')}`, pageW - margin, y, {align:'right'});
+            var dt = new Date();
+            doc.text('Vygenerováno: ' + dt.toLocaleDateString('cs-CZ') + ' ' + dt.toLocaleTimeString('cs-CZ'),
+                     pageW - margin, y, {align:'right'});
             y += 8;
 
-            // Souhrn (informativní řádek)
+            // souhrnný řádek
             doc.setFont('helvetica','normal'); doc.setFontSize(11);
             doc.text(
-              `2024 — Obrat: ${fmtCZK.format(s.rev24)}, Objednávky: ${fmtInt.format(s.ord24)} ks  |  ` +
-              `2025 — Obrat: ${fmtCZK.format(s.rev25)}, Objednávky: ${fmtInt.format(s.ord25)} ks`,
+              '2024 — Obrat: ' + fmtCZK.format(s.rev24) + ', Objednávky: ' + fmtInt.format(s.ord24) + ' ks  |  ' +
+              '2025 — Obrat: ' + fmtCZK.format(s.rev25) + ', Objednávky: ' + fmtInt.format(s.ord25) + ' ks',
               margin, y+6
             );
             y += 12;
 
-            // Souhrn (Obrat/Objednávky × 2024/2025/Rozdíl s % v závorkách)
+            // tabulka rozdílů s %
             doc.setFont('helvetica','bold'); doc.setFontSize(12);
             doc.text('Meziroční změna (2025 vs 2024)', margin, y); y += 6;
             doc.setFont('helvetica','normal'); doc.setFontSize(11);
-            const colW = (pageW - margin*2) / 4;
+            var colW = (pageW - margin*2) / 4;
             doc.text('Metrika', margin, y);
             doc.text('2024',  margin + colW, y);
             doc.text('2025',  margin + colW*2, y);
@@ -663,9 +666,9 @@
             doc.text('Obrat', margin, y);
             doc.text(fmtCZK.format(s.rev24), margin + colW, y);
             doc.text(fmtCZK.format(s.rev25), margin + colW*2, y);
-            const colorRev = dRev >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
+            var colorRev = dRev >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
             doc.setTextColor(colorRev.r, colorRev.g, colorRev.b);
-            doc.text(`${fmtCZK.format(dRev)}${pRev==null?'':` (${pRev>=0?'+':''}${pRev.toFixed(1)}%)`}`, margin + colW*3, y);
+            doc.text(fmtCZK.format(dRev) + (pRev==null?'':(' ('+(pRev>=0?'+':'')+pRev.toFixed(1)+'%)')), margin + colW*3, y);
             doc.setTextColor(0,0,0);
             y += 6;
 
@@ -673,40 +676,132 @@
             doc.text('Objednávky', margin, y);
             doc.text(fmtInt.format(s.ord24)+' ks', margin + colW, y);
             doc.text(fmtInt.format(s.ord25)+' ks', margin + colW*2, y);
-            const colorOrd = dOrd >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
+            var colorOrd = dOrd >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
             doc.setTextColor(colorOrd.r, colorOrd.g, colorOrd.b);
-            doc.text(`${fmtInt.format(dOrd)} ks${pOrd==null?'':` (${pOrd>=0?'+':''}${pOrd.toFixed(1)}%)`}`, margin + colW*3, y);
+            doc.text(fmtInt.format(dOrd)+' ks' + (pOrd==null?'':(' ('+(pOrd>=0?'+':'')+pOrd.toFixed(1)+'%)')), margin + colW*3, y);
             doc.setTextColor(0,0,0);
             y += 10;
 
-            // Grafy
+            // grafy
             if (mode === 'split'){
-              const gap = 6;
-              const imgW = ((pageW - margin*2) - gap) / 2;
-              const imgH = imgW * 0.7;
+              var gap = 6;
+              var imgW = ((pageW - margin*2) - gap) / 2;
+              var imgH = imgW * 0.7;
               doc.text('Objednávky (vlevo) & Obrat (vpravo)', margin, y);
               y += 4;
               doc.addImage(img1, 'PNG', margin, y, imgW, imgH);
               doc.addImage(img2, 'PNG', margin + imgW + gap, y, imgW, imgH);
               y += imgH + 6;
             } else {
-              const imgW = pageW - margin*2;
-              const imgH = imgW * 0.45;
+              var imgW2 = pageW - margin*2;
+              var imgH2 = imgW2 * 0.45;
               doc.text('Spojnicový graf — Objednávky & Obrat', margin, y);
               y += 4;
-              doc.addImage(img1, 'PNG', margin, y, imgW, imgH);
-              y += imgH + 6;
+              doc.addImage(img1, 'PNG', margin, y, imgW2, imgH2);
+              y += imgH2 + 6;
             }
 
-            const safe = name.replace(/[^\w\-]+/g,'_').slice(0,60);
-            doc.save(`Karta_dodavatele_${safe}.pdf`);
+            var safe = name.replace(/[^\w\-]+/g,'_').slice(0,60);
+            doc.save('Karta_dodavatele_' + safe + '.pdf');
           }catch(e){
             console.error(e);
             alert('Nepodařilo se vygenerovat PDF.');
           }
         }, 250);
-      }).catch(()=> alert('jsPDF se nepodařilo načíst (zkontroluj síť nebo přidej lokální soubor /web/vendor/jspdf.umd.min.js).'));
+      }).catch(function(){ alert('jsPDF se nepodařilo načíst (zkontroluj síť nebo přidej lokální soubor /web/vendor/jspdf.umd.min.js).'); });
     };
 
     window.exportCSV = function(){
-      if (!suppliers.length){ alert('Tabulka je pr
+      if (!suppliers.length){ alert('Tabulka je prázdná.'); return; }
+      var header = [
+        'Dodavatel','Obrat 2024','Objednávky 2024','Obrat 2025','Objednávky 2025',
+        'Δ Obrat (Kč)','Δ Obrat (%)','Δ Objednávky (ks)','Δ Objednávky (%)'
+      ];
+      var out = [header.join(',')];
+      for (var i = 0; i < suppliers.length; i++) {
+        var s = suppliers[i];
+        var dRev = s.rev25 - s.rev24;
+        var pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
+        var dOrd = s.ord25 - s.ord24;
+        var pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
+
+        out.push([
+          '"' + s.name.replace(/"/g,'""') + '"',
+          s.rev24, s.ord24, s.rev25, s.ord25,
+          dRev,
+          (pRev==null?'':pRev.toFixed(1)),
+          dOrd,
+          (pOrd==null?'':pOrd.toFixed(1))
+        ].join(','));
+      }
+      var blob = new Blob([out.join('\n')], { type:'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href=url; a.download='dodavatele_2024_2025_srovnani.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    };
+
+    /* Utility */
+    function detectHeaderStart(rows){
+      if (!rows || !rows.length) return 0;
+      var f = rows[0];
+      var looksHeader = f && f.length >= 5 &&
+        (typeof f[1] !== 'number' || typeof f[2] !== 'number' || typeof f[3] !== 'number' || typeof f[4] !== 'number');
+      return looksHeader ? 1 : 0;
+    }
+    function toNum(val){
+      if (typeof val === 'number') return val;
+      if (val == null) return 0;
+      var s = String(val).replace(/[^\d,.\- ]/g,'').replace(/\s+/g,'');
+      var n = parseFloat(s.replace(/,/g,'.'));
+      return isNaN(n) ? 0 : n;
+    }
+    function escapeHtml(s){
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+    function getCSS(varName){ return getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); }
+    function clearMessages(){ errorEl.textContent=''; /* status ponecháme */ }
+    function copyToClipboard(text){
+      if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+      return new Promise(function(resolve,reject){
+        try { var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+              document.body.appendChild(ta); ta.select(); var ok=document.execCommand('copy');
+              document.body.removeChild(ta); ok?resolve():reject(new Error('execCommand failed')); }
+        catch(e){ reject(e); }
+      });
+    }
+    window.resetUI = function(){
+      suppliers = [];
+      selEl.innerHTML = '<option value="">— nejprve nahraj soubor —</option>';
+      selEl.disabled = true;
+      tbodyEl.innerHTML = '';
+      tableInfoEl.textContent = '';
+      errorEl.textContent = '';
+      fileInfoEl.textContent = '';
+      statusEl.textContent = 'Stav: připraveno (čekám na soubor)…';
+      document.getElementById('kpiBox').hidden = true;
+      if (chartOrders) { chartOrders.destroy(); chartOrders = null; }
+      if (chartRevenue){ chartRevenue.destroy(); chartRevenue = null; }
+      if (chartLine)   { chartLine.destroy(); chartLine = null; }
+      shareInfoEl.textContent = '';
+      var inds = document.querySelectorAll('#table thead th .sort-ind');
+      for (var i=0;i<inds.length;i++){ inds[i].textContent=''; }
+      tableSort = { key:'name', dir:'asc' };
+    };
+
+    window.shareSupplier = function(){
+      var name = selEl.value;
+      if (!name){ shareInfoEl.textContent = 'Vyber dodavatele.'; return; }
+      var s = null;
+      for (var i=0;i<suppliers.length;i++){ if (suppliers[i].name===name){ s=suppliers[i]; break; } }
+      if (!s){ shareInfoEl.textContent = 'Data dodavatele nenalezena.'; return; }
+
+      var payload = encodeURIComponent(JSON.stringify(s));
+      var url = (location.origin + location.pathname) + '?s=' + payload;
+      copyToClipboard(url).then(function(){ shareInfoEl.textContent = 'URL zkopírována ↗ můžete sdílet.'; })
+                          .catch(function(){ shareInfoEl.textContent = 'Zkopírování se nepodařilo – URL: ' + url; });
+    };
+  </script>
+</body>
+</html>
