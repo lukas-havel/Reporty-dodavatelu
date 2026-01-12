@@ -142,49 +142,49 @@
     </main>
   </div>
 
-  <!-- ========== KNIHOVNY (Chart.js z jsDelivr primárně, XLSX lokálně) ========== -->
-  <!-- Chart.js: CDN (jsDelivr) + lokální fallback -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/"></script>
+  <!-- ========== SEKVENČNÍ NAČÍTÁNÍ KNIHOVEN ========== -->
   <script>
-    (function(){
-      if (typeof window.Chart === 'undefined') {
-        var s = document.createElement('script');
-        s.src = '/web/vendor/chart.umd.min.js';
-        s.onload = function(){ console.warn('Chart.js načten lokálně (fallback).'); };
-        s.onerror = function(){ console.error('Chart.js se nepodařilo načíst ani z CDN, ani lokálně.'); };
-        document.head.appendChild(s);
-      }
-    })();
-  </script>
-
-  <!-- SheetJS: lokálně + CDN fallback -->
-  /web/vendor/xlsx.full.min.js</script>
-  <script>
-    (function(){
-      if (typeof window.XLSX === 'undefined') {
-        var s = document.createElement('script');
-        s.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload = function(){ console.warn('XLSX načten z CDN.'); };
-        s.onerror = function(){ console.error('XLSX se nepodařilo načíst.'); };
-        document.head.appendChild(s);
-      }
-    })();
-  </script>
-
-  <!-- ===== Pomocné „waitFor“ (čekání na knihovny) ===== -->
-  <script>
-    function waitFor(testFn, {interval=50, timeout=8000} = {}){
+    // Načti Chart.js postupně z více zdrojů (jsDelivr → CDNJS → lokální)
+    var chartReadyPromise = (function loadChartSequentially(){
       return new Promise(function(resolve, reject){
-        var start = Date.now();
-        (function tick(){
-          try{ if (testFn()) return resolve(true); }catch(e){}
-          if (Date.now() - start > timeout) return reject(new Error('Timeout při čekání'));
-          setTimeout(tick, interval);
-        })();
+        var sources = [
+          'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+          'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
+          '/web/vendor/chart.umd.min.js'
+        ];
+        var i = 0;
+        function tryNext(){
+          if (i >= sources.length) { reject(new Error('Chart.js se nepodařilo načíst z žádného zdroje')); return; }
+          var src = sources[i++];
+          var s = document.createElement('script');
+          s.src = src; s.async = true;
+          s.onload = function(){ resolve(src); };
+          s.onerror = tryNext;
+          document.head.appendChild(s);
+        }
+        tryNext();
       });
-    }
-    function waitForXLSX(){ return waitFor(function(){ return typeof window.XLSX !== 'undefined'; }); }
-    function waitForChart(){ return waitFor(function(){ return typeof window.Chart !== 'undefined'; }); }
+    })();
+
+    // XLSX lokálně + fallback na CDN (unpkg)
+    var xlsxReadyPromise = (function ensureXLSX(){
+      return new Promise(function(resolve, reject){
+        function ok(){ resolve('ok'); }
+        if (typeof window.XLSX !== 'undefined') { ok(); return; }
+        var s = document.createElement('script');
+        s.src = '/web/vendor/xlsx.full.min.js'; s.async = true;
+        s.onload = ok;
+        s.onerror = function(){
+          var cdn = document.createElement('script');
+          cdn.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+          cdn.async = true;
+          cdn.onload = ok;
+          cdn.onerror = function(){ reject(new Error('XLSX se nepodařilo načíst')); };
+          document.head.appendChild(cdn);
+        };
+        document.head.appendChild(s);
+      });
+    })();
   </script>
 
   <!-- ========== HLAVNÍ LOGIKA (window.*) ========== -->
@@ -212,20 +212,12 @@
     var kpiOrdVal   = document.getElementById('kpiOrdVal');
     var kpiOrdDelta = document.getElementById('kpiOrdDelta');
 
-    /* Info o knihovnách */
-    (function showLibs(){
-      var scripts = document.getElementsByTagName('script');
-      var chartSrc='n/a', xlsxSrc='n/a';
-      for (var i=0;i<scripts.length;i++){
-        if (scripts[i].src && scripts[i].src.indexOf('chart')!==-1){ chartSrc=scripts[i].src; break; }
-      }
-      for (var j=0;j<scripts.length;j++){
-        if (scripts[j].src && scripts[j].src.indexOf('xlsx')!==-1){ xlsxSrc=scripts[j].src; break; }
-      }
+    // Zobraz stav knihoven (po jejich načtení)
+    Promise.allSettled([xlsxReadyPromise, chartReadyPromise]).then(function(results){
+      var chartSrc = (results[1].status === 'fulfilled') ? results[1].value : 'nenačteno';
       document.getElementById('libStatus').textContent =
-        'XLSX: ' + (typeof window.XLSX) + ' · Chart: ' + (typeof window.Chart) +
-        ' · Sources: chart=' + chartSrc + ', xlsx=' + xlsxSrc;
-    })();
+        'XLSX: ' + (typeof window.XLSX) + ' · Chart: ' + (typeof window.Chart) + ' · Chart src: ' + chartSrc;
+    });
 
     /* Auto načtení po výběru souboru */
     fileEl.addEventListener('change', function(){ window.loadSelectedFile(); });
@@ -237,13 +229,12 @@
       fileInfoEl.textContent = 'Soubor: ' + f.name + ' (' + fmtInt.format(f.size) + ' B)';
       statusEl.textContent = 'Stav: načítám XLSX…';
 
-      /* Čekáme jen na XLSX (Chart až při kreslení) */
-      waitForXLSX().then(function(){
-        document.getElementById('libStatus').textContent =
-          'XLSX: ' + (typeof window.XLSX) + ' · Chart: ' + (typeof window.Chart);
+      // ✅ Čekáme jen na XLSX (Chart až při kreslení)
+      xlsxReadyPromise.then(function(){
+        statusEl.textContent = 'Stav: zpracovávám data…';
         window.processFile(f);
       }).catch(function(e){
-        errorEl.textContent = 'XLSX se nenačetla včas. Zkus obnovit stránku (?v=42) nebo prověř síť.';
+        errorEl.textContent = 'XLSX se nenačetla. Zkus obnovit stránku (?v=43) nebo prověř síť.';
         statusEl.textContent = 'Stav: chyba.';
         console.error(e);
       });
@@ -251,7 +242,6 @@
 
     window.processFile = function(file){
       window.clearMessages();
-      statusEl.textContent = 'Stav: načítám a zpracovávám…';
       try{
         if (typeof XLSX === 'undefined') throw new Error('Knihovna XLSX není načtená');
 
@@ -322,13 +312,18 @@
       var name = selEl.value;
       if (!name) return;
 
-      /* Čekáme na Chart (může být z CDN nebo lokálně) */
-      waitForChart().then(function(){
+      // ✅ Graf kreslíme až po načtení Chart.js (bez pevného timeoutu; pouze info při neúspěchu)
+      chartReadyPromise.then(function(srcUsed){
         var s = null;
         for (var i = 0; i < suppliers.length; i++){
           if (suppliers[i].name === name) { s = suppliers[i]; break; }
         }
         if (!s) return;
+
+        if (typeof Chart === 'undefined'){
+          errorEl.textContent = 'Chart.js pořád není dostupná — prověř síť nebo lokální soubor /web/vendor/chart.umd.min.js.';
+          return;
+        }
 
         var labels = ['2024','2025'];
         var dsObrat24 = { type:'bar', label:'Obrat 2024', data:[s.rev24, null],
@@ -367,11 +362,11 @@
           }
         });
 
-        /* KPI (Δ 2025 vs 2024) */
+        // KPI (Δ 2025 vs 2024)
         var dRev = s.rev25 - s.rev24;
         var dOrd = s.ord25 - s.ord24;
         var pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
-        var pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
+        var pOrd = s.ord24 ? (dOrd / s.ord4 * 100) : null;
 
         kpiRevVal.textContent = fmtCZK.format(s.rev25) + ' vs ' + fmtCZK.format(s.rev24);
         kpiOrdVal.textContent = fmtInt.format(s.ord25) + ' ks vs ' + fmtInt.format(s.ord24) + ' ks';
@@ -386,8 +381,12 @@
         kpiRevDelta.className = 'delta ' + (dRev >= 0 ? 'up' : 'down');
         kpiOrdDelta.className = 'delta ' + (dOrd >= 0 ? 'up' : 'down');
         kpiBox.hidden = false;
+
+        // Pozn.: zobraz zdroj Chart.js
+        document.getElementById('libStatus').textContent =
+          'XLSX: ' + (typeof window.XLSX) + ' · Chart: ' + (typeof window.Chart) + ' · Chart src: ' + srcUsed;
       }).catch(function(){
-        errorEl.textContent = 'Chart.js se nenačetla včas — zkontroluj síť/rozšíření prohlížeče.';
+        errorEl.textContent = 'Chart.js se nepodařilo načíst (blokace CDN i lokálního souboru).';
       });
     };
 
