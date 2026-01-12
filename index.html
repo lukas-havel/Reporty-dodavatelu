@@ -72,16 +72,15 @@
     .error{color:#b00020}
     .status{font-size:13px;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;background:rgba(0,0,0,.03)}
 
-    /* KPI – Δ barvené podle znaménka + mini tabulka (Metrika × 2024/2025/Rozdíl) */
+    /* KPI – mini tabulka (Metrika × 2024/2025/Rozdíl); bez velkých Δ nahoře */
     .kpis{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
     .kpi{background:var(--kpiBg);border:1px solid var(--border);border-radius:12px;padding:12px}
     .kpi h3{margin:0 0 6px;font-size:14px;color:var(--muted)}
-    .kpi .bigDelta{font-size:30px;font-weight:900;line-height:1.2;margin-top:4px}
     .kpi .vals{font-size:16px;font-weight:700;margin-top:4px}
+
     .mini-table{width:100%;border-collapse:collapse;margin-top:8px}
-    .mini-table th,.mini-table td{padding:6px 8px;border-top:1px solid var(--border)}
+    .mini-table th,.mini-table td{padding:6px 8px;border-top:1px solid var(--border);text-align:left} /* ← levé zarovnání pod hlavičkami */
     .mini-table th{text-align:left;color:#374151;background:#f8fafc}
-    .mini-table td.num{text-align:right}
     .good{color:var(--kpiUp);font-weight:700}
     .bad{color:var(--kpiDown);font-weight:700}
   </style>
@@ -169,12 +168,10 @@
         <span style="color:var(--orange25)">tmavě oranžová</span> = 2025 Obrat.
       </p>
 
-      <!-- KPI: Δ barvené podle znaménka + mini tabulka (Metrika × 2024/2025/Rozdíl) -->
+      <!-- KPI: mini tabulka (Metrika × 2024/2025/Rozdíl) -->
       <div class="kpis" id="kpiBox" hidden>
         <div class="kpi">
           <h3>Meziroční změna (2025 vs 2024)</h3>
-          <div class="bigDelta" id="kpiDeltaRevenue">Δ Obrat: —</div>
-          <div class="bigDelta" id="kpiDeltaOrders">Δ Objednávky: —</div>
           <div class="vals" id="kpiVals">—</div>
 
           <!-- Mini tabulka: Metrika × (2024, 2025, Rozdíl) -->
@@ -182,23 +179,23 @@
             <thead>
               <tr>
                 <th>Metrika</th>
-                <th class="num">2024</th>
-                <th class="num">2025</th>
-                <th class="num">Rozdíl</th>
+                <th>2024</th>
+                <th>2025</th>
+                <th>Rozdíl</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td>Obrat</td>
-                <td class="num" id="mt_revenue_2024">—</td>
-                <td class="num" id="mt_revenue_2025">—</td>
-                <td class="num" id="mt_revenue_delta">—</td>
+                <td id="mt_revenue_2024">—</td>
+                <td id="mt_revenue_2025">—</td>
+                <td id="mt_revenue_delta">—</td>
               </tr>
               <tr>
                 <td>Objednávky</td>
-                <td class="num" id="mt_orders_2024">—</td>
-                <td class="num" id="mt_orders_2025">—</td>
-                <td class="num" id="mt_orders_delta">—</td>
+                <td id="mt_orders_2024">—</td>
+                <td id="mt_orders_2025">—</td>
+                <td id="mt_orders_delta">—</td>
               </tr>
             </tbody>
           </table>
@@ -309,15 +306,13 @@
     const chartLineCanvas    = document.getElementById('chartLine');
 
     const kpiBox      = document.getElementById('kpiBox');
-    const kpiDeltaRevenue = document.getElementById('kpiDeltaRevenue');
-    const kpiDeltaOrders  = document.getElementById('kpiDeltaOrders');
     const kpiVals     = document.getElementById('kpiVals');
 
-    const mtRev24El = document.getElementById('mt_revenue_2024');
-    const mtRev25El = document.getElementById('mt_revenue_2025');
+    const mtRev24El   = document.getElementById('mt_revenue_2024');
+    const mtRev25El   = document.getElementById('mt_revenue_2025');
     const mtRevDiffEl = document.getElementById('mt_revenue_delta');
-    const mtOrd24El = document.getElementById('mt_orders_2024');
-    const mtOrd25El = document.getElementById('mt_orders_2025');
+    const mtOrd24El   = document.getElementById('mt_orders_2024');
+    const mtOrd25El   = document.getElementById('mt_orders_2025');
     const mtOrdDiffEl = document.getElementById('mt_orders_delta');
 
     const shareInfoEl = document.getElementById('shareInfo');
@@ -367,7 +362,7 @@
         statusEl.textContent = 'Stav: zpracovávám data…';
         processFile(f);
       }).catch(e=>{
-        errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=51) nebo prověř síť.';
+        errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=52) nebo prověř síť.';
         statusEl.textContent = 'Stav: chyba.'; console.error(e);
       });
     };
@@ -425,6 +420,7 @@
       }
     };
 
+    /* TABULKA + meziroční změny (2025 vs 2024) + třídění */
     window.renderTable = function(){
       let rows = suppliers.map(s => {
         const deltaRev = s.rev25 - s.rev24;
@@ -463,37 +459,34 @@
       tbodyEl.innerHTML = html;
     };
 
+    /* Hlavní KPI mini-tab + grafy */
     window.renderView = function(){
       const name = selEl.value;
       if (!name) return;
       const s = suppliers.find(x => x.name === name);
       if (!s) return;
 
-      // KPI — Δ s barvou dle znaménka (zelená/červená)
+      // Δ + %
       const dRev = s.rev25 - s.rev24;
+      const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
       const dOrd = s.ord25 - s.ord24;
+      const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
 
-      kpiDeltaRevenue.textContent = `Δ Obrat: ${fmtCZK.format(dRev)}`;
-      kpiDeltaOrders.textContent  = `Δ Objednávky: ${fmtInt.format(dOrd)} ks`;
-
-      // nastav třídy (good/bad)
-      kpiDeltaRevenue.className = 'bigDelta ' + (dRev >= 0 ? 'good' : 'bad');
-      kpiDeltaOrders.className  = 'bigDelta ' + (dOrd >= 0 ? 'good' : 'bad');
-
+      // horní souhrnní řádek (zůstává informativně)
       kpiVals.textContent =
         `2024 — Obrat: ${fmtCZK.format(s.rev24)}, Objednávky: ${fmtInt.format(s.ord24)} ks | ` +
         `2025 — Obrat: ${fmtCZK.format(s.rev25)}, Objednávky: ${fmtInt.format(s.ord25)} ks`;
 
-      // mini-tab: hodnoty + rozdíl s barvou
-      mtRev24El.textContent  = fmtCZK.format(s.rev24);
-      mtRev25El.textContent  = fmtCZK.format(s.rev25);
-      mtRevDiffEl.textContent = fmtCZK.format(dRev);
-      mtRevDiffEl.className   = 'num ' + (dRev >= 0 ? 'good' : 'bad');
+      // mini-tab: absolutní rozdíl + procento v závorkách, barva podle znaménka
+      mtRev24El.textContent   = fmtCZK.format(s.rev24);
+      mtRev25El.textContent   = fmtCZK.format(s.rev25);
+      mtRevDiffEl.textContent = `${fmtCZK.format(dRev)}${pRev==null?'':` (${pRev>=0?'+':''}${pRev.toFixed(1)}%)`}`;
+      mtRevDiffEl.className   = (dRev >= 0 ? 'good' : 'bad');
 
-      mtOrd24El.textContent  = fmtInt.format(s.ord24) + ' ks';
-      mtOrd25El.textContent  = fmtInt.format(s.ord25) + ' ks';
-      mtOrdDiffEl.textContent = fmtInt.format(dOrd) + ' ks';
-      mtOrdDiffEl.className   = 'num ' + (dOrd >= 0 ? 'good' : 'bad');
+      mtOrd24El.textContent   = `${fmtInt.format(s.ord24)} ks`;
+      mtOrd25El.textContent   = `${fmtInt.format(s.ord25)} ks`;
+      mtOrdDiffEl.textContent = `${fmtInt.format(dOrd)} ks${pOrd==null?'':` (${pOrd>=0?'+':''}${pOrd.toFixed(1)}%)`}`;
+      mtOrdDiffEl.className   = (dOrd >= 0 ? 'good' : 'bad');
 
       kpiBox.hidden = false;
 
@@ -605,7 +598,7 @@
       });
     }
 
-    // Export PDF – Δ v zelené/červené dle znaménka
+    // Export PDF – sloupec „Rozdíl“ obsahuje absolutní hodnotu + % v závorkách; barva rozdílu (zelená/červená)
     window.exportSupplierPDF = function(){
       const name = selEl.value;
       if (!name){ alert('Vyber nejdřív dodavatele.'); return; }
@@ -621,7 +614,9 @@
             if (!jsPDF){ throw new Error('jsPDF stále není dostupný'); }
 
             const dRev = s.rev25 - s.rev24;
+            const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
             const dOrd = s.ord25 - s.ord24;
+            const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
 
             const mode = chartModeEl.value;
             let img1=null, img2=null;
@@ -644,21 +639,18 @@
             doc.text(`Vygenerováno: ${dt.toLocaleDateString('cs-CZ')} ${dt.toLocaleTimeString('cs-CZ')}`, pageW - margin, y, {align:'right'});
             y += 8;
 
-            // Δ s barvou dle znaménka
-            const colorRev = dRev >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
-            const colorOrd = dOrd >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
+            // Souhrn (informativní řádek)
+            doc.setFont('helvetica','normal'); doc.setFontSize(11);
+            doc.text(
+              `2024 — Obrat: ${fmtCZK.format(s.rev24)}, Objednávky: ${fmtInt.format(s.ord24)} ks  |  ` +
+              `2025 — Obrat: ${fmtCZK.format(s.rev25)}, Objednávky: ${fmtInt.format(s.ord25)} ks`,
+              margin, y+6
+            );
+            y += 12;
 
-            doc.setFont('helvetica','bold'); doc.setFontSize(26);
-            doc.setTextColor(colorRev.r, colorRev.g, colorRev.b);
-            doc.text(`Δ Obrat: ${fmtCZK.format(dRev)}`, margin, y+10);
-            doc.setTextColor(colorOrd.r, colorOrd.g, colorOrd.b);
-            doc.text(`Δ Objednávky: ${fmtInt.format(dOrd)} ks`, margin, y+20);
-            doc.setTextColor(0,0,0);
-            y += 28;
-
-            // Souhrn (Obrat/Objednávky × 2024/2025/Rozdíl)
+            // Souhrn (Obrat/Objednávky × 2024/2025/Rozdíl s % v závorkách)
             doc.setFont('helvetica','bold'); doc.setFontSize(12);
-            doc.text('Souhrn (Obrat & Objednávky za 2024 / 2025 / Rozdíl)', margin, y); y += 6;
+            doc.text('Meziroční změna (2025 vs 2024)', margin, y); y += 6;
             doc.setFont('helvetica','normal'); doc.setFontSize(11);
             const colW = (pageW - margin*2) / 4;
             doc.text('Metrika', margin, y);
@@ -667,19 +659,23 @@
             doc.text('Rozdíl',margin + colW*3, y);
             y += 6;
 
+            // Obrat
             doc.text('Obrat', margin, y);
             doc.text(fmtCZK.format(s.rev24), margin + colW, y);
             doc.text(fmtCZK.format(s.rev25), margin + colW*2, y);
+            const colorRev = dRev >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
             doc.setTextColor(colorRev.r, colorRev.g, colorRev.b);
-            doc.text(fmtCZK.format(dRev), margin + colW*3, y);
+            doc.text(`${fmtCZK.format(dRev)}${pRev==null?'':` (${pRev>=0?'+':''}${pRev.toFixed(1)}%)`}`, margin + colW*3, y);
             doc.setTextColor(0,0,0);
             y += 6;
 
+            // Objednávky
             doc.text('Objednávky', margin, y);
             doc.text(fmtInt.format(s.ord24)+' ks', margin + colW, y);
             doc.text(fmtInt.format(s.ord25)+' ks', margin + colW*2, y);
+            const colorOrd = dOrd >= 0 ? {r:22,g:163,b:74} : {r:220,g:38,b:38};
             doc.setTextColor(colorOrd.r, colorOrd.g, colorOrd.b);
-            doc.text(fmtInt.format(dOrd)+' ks', margin + colW*3, y);
+            doc.text(`${fmtInt.format(dOrd)} ks${pOrd==null?'':` (${pOrd>=0?'+':''}${pOrd.toFixed(1)}%)`}`, margin + colW*3, y);
             doc.setTextColor(0,0,0);
             y += 10;
 
@@ -713,94 +709,4 @@
     };
 
     window.exportCSV = function(){
-      if (!suppliers.length){ alert('Tabulka je prázdná.'); return; }
-      const header = [
-        'Dodavatel','Obrat 2024','Objednávky 2024','Obrat 2025','Objednávky 2025',
-        'Δ Obrat (Kč)','Δ Obrat (%)','Δ Objednávky (ks)','Δ Objednávky (%)'
-      ];
-      const out = [header.join(',')];
-      for (let i = 0; i < suppliers.length; i++) {
-        const s = suppliers[i];
-        const dRev = s.rev25 - s.rev24;
-        const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
-        const dOrd = s.ord25 - s.ord24;
-        const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
-
-        out.push([
-          '"' + s.name.replace(/"/g,'""') + '"',
-          s.rev24, s.ord24, s.rev25, s.ord25,
-          dRev,
-          (pRev==null?'':pRev.toFixed(1)),
-          dOrd,
-          (pOrd==null?'':pOrd.toFixed(1))
-        ].join(','));
-      }
-      const blob = new Blob([out.join('\n')], { type:'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='dodavatele_2024_2025_srovnani.csv';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-    };
-
-    /* Utility */
-    function detectHeaderStart(rows){
-      if (!rows || !rows.length) return 0;
-      const f = rows[0];
-      const looksHeader = f && f.length >= 5 &&
-        (typeof f[1] !== 'number' || typeof f[2] !== 'number' || typeof f[3] !== 'number' || typeof f[4] !== 'number');
-      return looksHeader ? 1 : 0;
-    }
-    function toNum(val){
-      if (typeof val === 'number') return val;
-      if (val == null) return 0;
-      const s = String(val).replace(/[^\d,.\- ]/g,'').replace(/\s+/g,'');
-      const n = parseFloat(s.replace(/,/g,'.'));
-      return isNaN(n) ? 0 : n;
-    }
-    function escapeHtml(s){
-      return String(s)
-        .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
-        .replaceAll('"','&quot;').replaceAll("'",'&#39;');
-    }
-    function getCSS(varName){ return getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); }
-    function clearMessages(){ errorEl.textContent=''; /* status ponecháme */ }
-    function copyToClipboard(text){
-      if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
-      return new Promise((resolve,reject)=>{
-        try { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-              document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy');
-              document.body.removeChild(ta); ok?resolve():reject(new Error('execCommand failed')); }
-        catch(e){ reject(e); }
-      });
-    }
-    window.resetUI = function(){
-      suppliers = [];
-      selEl.innerHTML = '<option value="">— nejprve nahraj soubor —</option>';
-      selEl.disabled = true;
-      tbodyEl.innerHTML = '';
-      tableInfoEl.textContent = '';
-      errorEl.textContent = '';
-      fileInfoEl.textContent = '';
-      statusEl.textContent = 'Stav: připraveno (čekám na soubor)…';
-      document.getElementById('kpiBox').hidden = true;
-      if (chartOrders) { chartOrders.destroy(); chartOrders = null; }
-      if (chartRevenue){ chartRevenue.destroy(); chartRevenue = null; }
-      if (chartLine)   { chartLine.destroy(); chartLine = null; }
-      shareInfoEl.textContent = '';
-      Array.from(document.querySelectorAll('#table thead th .sort-ind')).forEach(i => i.textContent = '');
-      tableSort = { key:'name', dir:'asc' };
-    };
-
-    window.shareSupplier = function(){
-      const name = selEl.value;
-      if (!name){ shareInfoEl.textContent = 'Vyber dodavatele.'; return; }
-      const s = suppliers.find(x => x.name === name);
-      if (!s){ shareInfoEl.textContent = 'Data dodavatele nenalezena.'; return; }
-
-      const payload = encodeURIComponent(JSON.stringify(s));
-      const url = `${location.origin + location.pathname}?s=${payload}`;
-      copyToClipboard(url).then(()=>{ shareInfoEl.textContent = 'URL zkopírována ↗ můžete sdílet.'; })
-                          .catch(()=>{ shareInfoEl.textContent = 'Zkopírování se nepodařilo – URL: ' + url; });
-    };
-  </script>
-</body>
-</html>
+      if (!suppliers.length){ alert('Tabulka je pr
