@@ -13,13 +13,16 @@
       --card:#fff; --border:#e5e7eb; --primary:#1565c0; --accent:#0fb9b1;
       --radius:14px; --shadow:0 10px 24px rgba(31,41,55,.08);
 
-      /* barvy grafu (2025 zvýrazněn) */
-      --rev24:#89a6d8;  /* obrat 2024 tlumeně modrá */
-      --rev25:#1565c0;  /* obrat 2025 výrazná modrá */
+      /* BARVY — modrá/oranžová, světlá=2024, tmavá=2025 */
+      --blue24:#90caf9;   /* světle modrá (2024 objednávky) */
+      --blue25:#1565c0;   /* tmavě modrá (2025 objednávky)   */
+      --orange24:#ffd59e; /* světle oranžová (2024 obrat)   */
+      --orange25:#ef6c00; /* tmavě oranžová (2025 obrat)    */
 
       /* KPI */
       --kpiUp:#16a34a; --kpiDown:#dc2626; --kpiBg:#f1f5f9;
     }
+
     html,body{height:100%;background:linear-gradient(160deg,var(--bg),var(--bg2));color:var(--text);
       font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.6;margin:0}
     header{padding:20px 24px 8px}
@@ -27,7 +30,7 @@
     .hint{color:var(--muted);font-size:13px;margin:6px 0 0}
 
     .grid{display:grid;grid-template-columns:1fr;gap:18px;padding:0 24px 24px}
-    @media(min-width:980px){.grid{grid-template-columns:380px 1fr}}
+    @media(min-width:1180px){.grid{grid-template-columns:420px 1fr}}
     .grid>*{min-width:0}
 
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
@@ -51,23 +54,25 @@
     .btn-accent{background:var(--accent);color:#fff;border-color:var(--accent)}
 
     table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:auto}
-    thead th{background:rgba(21,101,192,.12);padding:8px 10px;border-bottom:1px solid var(--border)}
+    thead th{background:rgba(21,101,192,.12);padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
     tbody td,tfoot td{border-top:1px solid var(--border);padding:8px 10px;font-size:14px;word-break:break-word}
     tbody tr:hover{background:rgba(0,0,0,.03)}
+    .num{text-align:right}
 
     .chart-wrap{border:1px solid var(--border);border-radius:var(--radius);padding:12px;background:#fff}
+    .legend-note{font-size:13px;color:var(--muted);margin-top:6px}
 
     .muted{color:var(--muted);font-size:13px}
     .error{color:#b00020}
     .status{font-size:13px;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;background:rgba(0,0,0,.03)}
 
-    /* KPI – zjednodušeno, velké % rozdílu */
+    /* KPI – velké % meziroční změny */
     .kpis{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}
     .kpi{background:var(--kpiBg);border:1px solid var(--border);border-radius:12px;padding:12px}
     .kpi h3{margin:0 0 6px;font-size:14px;color:var(--muted)}
-    .kpi .val{font-size:18px;font-weight:700}
     .kpi .percent{font-size:34px;font-weight:900;line-height:1.1;margin-top:4px}
     .kpi .delta{font-size:14px;margin-top:4px}
+    .kpi .vals{font-size:16px;font-weight:700;margin-top:4px}
     .up{color:var(--kpiUp)} .down{color:var(--kpiDown)}
   </style>
 </head>
@@ -75,7 +80,6 @@
   <header>
     <h1>Reporty dodavatelů — Excel (2024 vs 2025)</h1>
     <p class="hint">Očekávané sloupce: <strong>A</strong> Dodavatel, <strong>B</strong> Obrat 2024, <strong>C</strong> Objednávky 2024, <strong>D</strong> Obrat 2025, <strong>E</strong> Objednávky 2025.</p>
-    <p id="libStatus" class="hint"></p>
   </header>
 
   <div class="grid">
@@ -84,10 +88,11 @@
       <h2>Ovládací panel</h2>
 
       <div class="control">
-        <label for="file">Nahrát Excel (.xls / .xlsx)</label>
+        <label for="file">Nahrát Excel (.xls / .xlsx / .xlsm / .csv)</label>
         <div class="file-control">
           <input type="file" id="file" accept=".xlsx,.xls,.xlsm,.csv" />
         </div>
+
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="loadSelectedFile()">Načíst soubor</button>
           <button class="btn" onclick="resetUI()">Reset</button>
@@ -116,8 +121,15 @@
 
     <!-- Data + graf -->
     <main class="card">
-      <h2>Graf (sloupcový) — Obrat 2024 vs 2025</h2>
+      <h2>Graf — modrá (Objednávky) & oranžová (Obrat)</h2>
       <div class="chart-wrap"><canvas id="chart" height="160"></canvas></div>
+      <p class="legend-note">
+        <strong>Legenda:</strong>
+        <span style="color:var(--blue24)">světle modrá</span> = 2024 Objednávky, 
+        <span style="color:var(--orange24)">světle oranžová</span> = 2024 Obrat; 
+        <span style="color:var(--blue25)">tmavě modrá</span> = 2025 Objednávky (tenčí), 
+        <span style="color:var(--orange25)">tmavě oranžová</span> = 2025 Obrat (tenčí).
+      </p>
 
       <!-- KPI: velké % meziroční změny + doplňkové hodnoty -->
       <div class="kpis" id="kpiBox" hidden>
@@ -125,20 +137,24 @@
           <h3>Meziroční změna (2025 vs 2024)</h3>
           <div class="percent" id="kpiPercent">—</div>
           <div class="delta" id="kpiDelta">—</div>
-          <div class="val" id="kpiVals">—</div>
+          <div class="vals" id="kpiVals">—</div>
         </div>
       </div>
 
-      <h2 style="margin-top:14px">Tabulka dat</h2>
+      <h2 style="margin-top:14px">Tabulka dat + meziroční změny</h2>
       <div class="muted" id="tableInfo"></div>
       <table id="table">
         <thead>
           <tr>
             <th>Dodavatel</th>
-            <th style="text-align:right">Obrat 2024</th>
-            <th style="text-align:right">Objednávky 2024</th>
-            <th style="text-align:right">Obrat 2025</th>
-            <th style="text-align:right">Objednávky 2025</th>
+            <th class="num">Obrat 2024</th>
+            <th class="num">Objednávky 2024</th>
+            <th class="num">Obrat 2025</th>
+            <th class="num">Objednávky 2025</th>
+            <th class="num">Δ Obrat (Kč)</th>
+            <th class="num">Δ Obrat (%)</th>
+            <th class="num">Δ Objednávky (ks)</th>
+            <th class="num">Δ Objednávky (%)</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -193,15 +209,12 @@
 
   <!-- ========== HLAVNÍ LOGIKA (window.*) ========== -->
   <script>
-    /* Formátování */
     const fmtInt = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 0 });
     const fmtCZK = new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' });
 
-    /* Stav */
     let suppliers = []; // { name, rev24, ord24, rev25, ord25 }
     let chart = null;
 
-    /* DOM */
     const fileEl      = document.getElementById('file');
     const fileInfoEl  = document.getElementById('fileInfo');
     const statusEl    = document.getElementById('status');
@@ -216,14 +229,6 @@
     const kpiVals     = document.getElementById('kpiVals');
     const shareInfoEl = document.getElementById('shareInfo');
 
-    /* Info o knihovnách */
-    Promise.allSettled([xlsxReadyPromise, chartReadyPromise]).then((results)=>{
-      const chartSrc = (results[1].status === 'fulfilled') ? results[1].value : 'nenačteno';
-      document.getElementById('libStatus').textContent =
-        'XLSX: ' + (typeof window.XLSX) + ' · Chart: ' + (typeof window.Chart) + ' · Chart src: ' + chartSrc;
-    });
-
-    /* Auto načtení po výběru souboru */
     fileEl.addEventListener('change', ()=> window.loadSelectedFile());
 
     /* Načtení sdílených dat z URL (?s=...) */
@@ -247,7 +252,6 @@
       }
     })();
 
-    /* Globální funkce */
     window.loadSelectedFile = function(){
       const f = fileEl.files?.[0] ?? null;
       if (!f){ statusEl.textContent = 'Stav: nejprve vyber soubor (.xls/.xlsx/.xlsm/.csv)'; return; }
@@ -258,7 +262,7 @@
         statusEl.textContent = 'Stav: zpracovávám data…';
         processFile(f);
       }).catch((e)=>{
-        errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=xx) nebo prověř síť.';
+        errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=45) nebo prověř síť.';
         statusEl.textContent = 'Stav: chyba.';
         console.error(e);
       });
@@ -317,102 +321,137 @@
       }
     };
 
+    /* TABULKA + meziroční změny (2025 vs 2024) */
     window.renderTable = function(){
-      const html = suppliers.map(s => `
-        <tr>
-          <td>${escapeHtml(s.name)}</td>
-          <td style="text-align:right">${fmtCZK.format(s.rev24)}</td>
-          <td style="text-align:right">${fmtInt.format(s.ord24)}</td>
-          <td style="text-align:right">${fmtCZK.format(s.rev25)}</td>
-          <td style="text-align:right">${fmtInt.format(s.ord25)}</td>
-        </tr>
-      `).join('');
-      tbodyEl.innerHTML = html;
+      const rows = suppliers.map(s => {
+        const dRev = s.rev25 - s.rev24;
+        const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
+        const dOrd = s.ord25 - s.ord24;
+        const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
+
+        return `
+          <tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td class="num">${fmtCZK.format(s.rev24)}</td>
+            <td class="num">${fmtInt.format(s.ord24)}</td>
+            <td class="num">${fmtCZK.format(s.rev25)}</td>
+            <td class="num">${fmtInt.format(s.ord25)}</td>
+            <td class="num">${fmtCZK.format(dRev)}</td>
+            <td class="num">${pRev==null?'—':((pRev>=0?'+':'')+pRev.toFixed(1)+' %')}</td>
+            <td class="num">${fmtInt.format(dOrd)} ks</td>
+            <td class="num">${pOrd==null?'—':((pOrd>=0?'+':'')+pOrd.toFixed(1)+' %')}</td>
+          </tr>
+        `;
+      }).join('');
+      tbodyEl.innerHTML = rows;
     };
 
-    /* ZJEDNODUŠENÝ VÝSTUP: jeden sloupcový graf – jen Obrat (legend: „Obrat“) */
+    /* GRAF: 4 datasety (2024/2025 × Objednávky/Obrat), 2024 široké světlé, 2025 tenčí tmavé */
     window.renderView = function(){
       const name = selEl.value;
       if (!name) return;
       const s = suppliers.find(x => x.name === name);
       if (!s) return;
 
-      chartReadyPromise.then((src)=>{
+      chartReadyPromise.then(()=>{
         if (typeof Chart === 'undefined'){
           errorEl.textContent = 'Chart.js není dostupná — prověř CDN nebo lokální soubor /web/vendor/chart.umd.min.js.';
           return;
         }
 
         const labels = ['2024','2025'];
-        const datasetRevenue = {
-          type:'bar',
-          label:'Obrat',                    /* jednoduchá legenda */
-          data:[s.rev24, s.rev25],
-          backgroundColor:[getCSS('--rev24'), getCSS('--rev25')],
-          borderColor:[getCSS('--rev24'), getCSS('--rev25')],
-          borderWidth:[1,2]
+
+        // 2024 (světlé, tlustší)
+        const dsOrders24 = {
+          type:'bar', label:'Objednávky 2024',
+          data:[s.ord24, null],
+          backgroundColor:getCSS('--blue24'),
+          borderColor:getCSS('--blue24'),
+          yAxisID:'yOrd',
+          barThickness:24, borderWidth:1
+        };
+        const dsRevenue24 = {
+          type:'bar', label:'Obrat 2024',
+          data:[s.rev24, null],
+          backgroundColor:getCSS('--orange24'),
+          borderColor:getCSS('--orange24'),
+          yAxisID:'yRev',
+          barThickness:24, borderWidth:1
+        };
+
+        // 2025 (tmavé, tenčí)
+        const dsOrders25 = {
+          type:'bar', label:'Objednávky 2025',
+          data:[null, s.ord25],
+          backgroundColor:getCSS('--blue25'),
+          borderColor:getCSS('--blue25'),
+          yAxisID:'yOrd',
+          barThickness:12, borderWidth:2
+        };
+        const dsRevenue25 = {
+          type:'bar', label:'Obrat 2025',
+          data:[null, s.rev25],
+          backgroundColor:getCSS('--orange25'),
+          borderColor:getCSS('--orange25'),
+          yAxisID:'yRev',
+          barThickness:12, borderWidth:2
         };
 
         if (chart) chart.destroy();
         chart = new Chart(chartCanvas, {
-          data:{ labels, datasets:[datasetRevenue] },
+          data:{ labels, datasets:[dsOrders24, dsRevenue24, dsOrders25, dsRevenue25] },
           options:{
             responsive:true,
             plugins:{
-              legend:{ position:'top', labels:{ usePointStyle:true } },
+              legend:{ display:false }, /* legendu řeší text pod grafem */
               tooltip:{
                 callbacks:{
                   label:function(item){
+                    const lbl = item.dataset.label || '';
                     const v = item.parsed.y;
-                    const year = item.label;
-                    const is2024 = year === '2024';
-                    const ord = is2024 ? s.ord24 : s.ord25;
-                    return [
-                      'Obrat: ' + fmtCZK.format(v),
-                      'Objednávky: ' + fmtInt.format(ord) + ' ks'
-                    ];
+                    if (lbl.includes('Obrat')) return lbl + ': ' + fmtCZK.format(v);
+                    return lbl + ': ' + fmtInt.format(v) + ' ks';
                   }
                 }
               },
-              title:{ display:true, text:'Dodavatel: ' + name + ' — Obrat 2024 vs 2025' }
+              title:{ display:true, text:'Dodavatel: ' + name + ' — Objednávky & Obrat (2024 vs 2025)' }
             },
             scales:{
               x:{ title:{ display:true, text:'Rok' } },
-              y:{ title:{ display:true, text:'Obrat (Kč)' }, beginAtZero:true }
+              yRev:{ type:'linear', position:'left',  title:{ display:true, text:'Obrat (Kč)' }, grid:{ drawOnChartArea:true } },
+              yOrd:{ type:'linear', position:'right', title:{ display:true, text:'Objednávky (ks)' }, grid:{ drawOnChartArea:false } }
             }
           }
         });
 
-        /* KPI – velké % meziroční rozdíl */
+        /* KPI (meziroční změna 2025 vs 2024 — procento velké) */
         const dRev = s.rev25 - s.rev24;
         const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
         const dOrd = s.ord25 - s.ord24;
         const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
 
-        if (pRev === null){
-          kpiPercent.textContent = '—';
-        } else {
+        if (pRev == null){ kpiPercent.textContent = '—'; }
+        else {
           const sign = pRev >= 0 ? '+' : '';
           kpiPercent.textContent = `${sign}${pRev.toFixed(1)}%`;
           kpiPercent.className = 'percent ' + (pRev >= 0 ? 'up' : 'down');
         }
+
         kpiDelta.textContent =
           `Δ Obrat: ${fmtCZK.format(dRev)}  ·  Δ Objednávky: ${fmtInt.format(dOrd)} ks` +
-          (pOrd == null ? '' : `  (${pOrd>=0?'+':''}${pOrd?.toFixed(1)}%)`);
-        kpiVals.textContent =
-          `2024: ${fmtCZK.format(s.rev24)} · ${fmtInt.format(s.ord24)} ks   |   ` +
-          `2025: ${fmtCZK.format(s.rev25)} · ${fmtInt.format(s.ord25)} ks`;
-        kpiBox.hidden = false;
+          (pOrd == null ? '' : `  (${pOrd>=0?'+':''}${pOrd.toFixed(1)}%)`);
 
-        /* aktualizace info o zdroji Chart */
-        document.getElementById('libStatus').textContent =
-          'XLSX: ' + (typeof window.XLSX) + ' · Chart: ' + (typeof window.Chart) + ' · Chart src: ' + src;
+        kpiVals.textContent =
+          `2024 — Obrat: ${fmtCZK.format(s.rev24)}, Objednávky: ${fmtInt.format(s.ord24)} ks | ` +
+          `2025 — Obrat: ${fmtCZK.format(s.rev25)}, Objednávky: ${fmtInt.format(s.ord25)} ks`;
+
+        kpiBox.hidden = false;
       }).catch(()=>{
         errorEl.textContent = 'Chart.js se nepodařilo načíst (blokace CDN i lokálního souboru).';
       });
     };
 
-    /* Sdílení konkrétního dodavatele (vloží data do URL a zkopíruje do schránky) */
+    /* Sdílení konkrétního dodavatele — uloží data do URL parametru ?s=... a zkopíruje */
     window.shareSupplier = function(){
       const name = selEl.value;
       if (!name){ shareInfoEl.textContent = 'Vyber dodavatele.'; return; }
@@ -423,24 +462,36 @@
       const base = location.origin + location.pathname;
       const url = `${base}?s=${payload}`;
 
-      copyToClipboard(url).then(()=>{
-        shareInfoEl.textContent = 'URL zkopírována ↗ můžete sdílet.';
-      }).catch(()=>{
-        shareInfoEl.textContent = 'Zkopírování se nepodařilo – URL: ' + url;
-      });
+      copyToClipboard(url).then(()=>{ shareInfoEl.textContent = 'URL zkopírována ↗ můžete sdílet.'; })
+                          .catch(()=>{ shareInfoEl.textContent = 'Zkopírování se nepodařilo – URL: ' + url; });
     };
 
     window.exportCSV = function(){
       if (!suppliers.length){ alert('Tabulka je prázdná.'); return; }
-      const header = ['Dodavatel','Obrat 2024','Objednávky 2024','Obrat 2025','Objednávky 2025'];
+      const header = [
+        'Dodavatel','Obrat 2024','Objednávky 2024','Obrat 2025','Objednávky 2025',
+        'Δ Obrat (Kč)','Δ Obrat (%)','Δ Objednávky (ks)','Δ Objednávky (%)'
+      ];
       const out = [header.join(',')];
       for (let i = 0; i < suppliers.length; i++) {
         const s = suppliers[i];
-        out.push('"' + s.name.replace(/"/g,'""') + '",' + s.rev24 + ',' + s.ord24 + ',' + s.rev25 + ',' + s.ord25);
+        const dRev = s.rev25 - s.rev24;
+        const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
+        const dOrd = s.ord25 - s.ord24;
+        const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
+
+        out.push([
+          '"' + s.name.replace(/"/g,'""') + '"',
+          s.rev24, s.ord24, s.rev25, s.ord25,
+          dRev,
+          (pRev==null?'':pRev.toFixed(1)),
+          dOrd,
+          (pOrd==null?'':pOrd.toFixed(1))
+        ].join(','));
       }
       const blob = new Blob([out.join('\n')], { type:'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='dodavatele_2024_2025.csv';
+      const a = document.createElement('a'); a.href=url; a.download='dodavatele_2024_2025_srovnani.csv';
       document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     };
 
@@ -464,21 +515,15 @@
         .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
         .replaceAll('"','&quot;').replaceAll("'",'&#39;');
     }
-    function getCSS(varName){
-      return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-    }
+    function getCSS(varName){ return getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); }
     function clearMessages(){ errorEl.textContent=''; /* status ponecháme */ }
     function copyToClipboard(text){
       if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
       return new Promise((resolve,reject)=>{
-        try {
-          const ta = document.createElement('textarea');
-          ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
-          document.body.appendChild(ta); ta.select();
-          const ok = document.execCommand('copy');
-          document.body.removeChild(ta);
-          ok ? resolve() : reject(new Error('execCommand failed'));
-        } catch(e){ reject(e); }
+        try { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+              document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy');
+              document.body.removeChild(ta); ok?resolve():reject(new Error('execCommand failed')); }
+        catch(e){ reject(e); }
       });
     }
     window.resetUI = function(){
