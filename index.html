@@ -113,6 +113,7 @@
 
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-accent" onclick="shareSupplier()">Sdílet dodavatele (kopírovat URL)</button>
+        <button class="btn" onclick="exportSupplierPDF()">Export PDF (karta dodavatele)</button>
         <span id="shareInfo" class="muted"></span>
       </div>
 
@@ -207,6 +208,9 @@
     })();
   </script>
 
+  <!-- jsPDF pro export PDF -->
+  https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js</script>
+
   <!-- ========== HLAVNÍ LOGIKA (window.*) ========== -->
   <script>
     const fmtInt = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 0 });
@@ -262,7 +266,7 @@
         statusEl.textContent = 'Stav: zpracovávám data…';
         processFile(f);
       }).catch((e)=>{
-        errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=45) nebo prověř síť.';
+        errorEl.textContent = 'XLSX se nenačetla. Obnov stránku (?v=46) nebo prověř síť.';
         statusEl.textContent = 'Stav: chyba.';
         console.error(e);
       });
@@ -464,6 +468,96 @@
 
       copyToClipboard(url).then(()=>{ shareInfoEl.textContent = 'URL zkopírována ↗ můžete sdílet.'; })
                           .catch(()=>{ shareInfoEl.textContent = 'Zkopírování se nepodařilo – URL: ' + url; });
+    };
+
+    /* Export PDF „karta dodavatele“ (graf + KPI + čísla) — bez nutnosti XLSX u příjemce */
+    window.exportSupplierPDF = function(){
+      const name = selEl.value;
+      if (!name){ alert('Vyber nejdřív dodavatele.'); return; }
+      const s = suppliers.find(x => x.name === name);
+      if (!s){ alert('Data dodavatele nenalezena.'); return; }
+
+      // Ujisti se, že je vykreslený graf pro aktuálního dodavatele
+      renderView();
+
+      // Počkej chviličku na překreslení grafu a přečti PNG
+      setTimeout(async ()=> {
+        try{
+          const { jsPDF } = window.jspdf || {};
+          if (!jsPDF){ alert('jsPDF se nenačetl.'); return; }
+
+          const dRev = s.rev25 - s.rev24;
+          const pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
+          const dOrd = s.ord25 - s.ord24;
+          const pOrd = s.ord24 ? (dOrd / s.ord24 * 100) : null;
+
+          const imgData = chartCanvas.toDataURL('image/png', 1.0);
+
+          const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+          const pageW = doc.internal.pageSize.getWidth();
+          const margin = 15;
+          let y = margin;
+
+          // Hlavička
+          doc.setFont('helvetica','bold'); doc.setFontSize(18);
+          doc.text(`Karta dodavatele — ${name}`, margin, y);
+          doc.setFont('helvetica','normal'); doc.setFontSize(10);
+          const dt = new Date(); 
+          doc.text(`Vygenerováno: ${dt.toLocaleDateString('cs-CZ')} ${dt.toLocaleTimeString('cs-CZ')}`, pageW - margin, y, {align:'right'});
+          y += 8;
+
+          // KPI (velké %)
+          doc.setFont('helvetica','bold'); doc.setFontSize(30);
+          const pText = (pRev==null?'—':((pRev>=0?'+':'')+pRev.toFixed(1)+'%'));
+          doc.setTextColor(pRev==null?0:(pRev>=0?22:220), pRev==null?0:(pRev>=0?163:38), pRev==null?0:(pRev>=0?74:38));
+          doc.text(pText, margin, y+12);
+          doc.setTextColor(0,0,0);
+          doc.setFontSize(11); doc.setFont('helvetica','normal');
+          doc.text(`Δ Obrat: ${fmtCZK.format(dRev)}   ·   Δ Objednávky: ${fmtInt.format(dOrd)} ks${pOrd==null?'':`  (${pOrd>=0?'+':''}${pOrd.toFixed(1)}%)`}`, margin, y+20);
+          y += 26;
+
+          // Dvě tabulky čísel (2024 a 2025) vedle sebe
+          doc.setFont('helvetica','bold'); doc.setFontSize(12);
+          doc.text('Souhrn', margin, y); y += 6;
+          doc.setFont('helvetica','normal'); doc.setFontSize(11);
+          const col1x = margin, col2x = pageW/2 + 5;
+          const lineH = 6;
+
+          doc.text('2024', col1x, y);
+          doc.text('2025', col2x, y);
+          y += lineH;
+
+          doc.text(`Obrat: ${fmtCZK.format(s.rev24)}`, col1x, y);
+          doc.text(`Obrat: ${fmtCZK.format(s.rev25)}`, col2x, y);
+          y += lineH;
+
+          doc.text(`Objednávky: ${fmtInt.format(s.ord24)} ks`, col1x, y);
+          doc.text(`Objednávky: ${fmtInt.format(s.ord25)} ks`, col2x, y);
+          y += lineH + 4;
+
+          // Graf (plná šířka minus okraje)
+          const imgW = pageW - margin*2;
+          const imgH = imgW * 0.48; // přibližný poměr
+          doc.setFont('helvetica','bold'); doc.setFontSize(12);
+          doc.text('Graf — Objednávky (modře) & Obrat (oranžově)', margin, y);
+          y += 4;
+          doc.addImage(imgData, 'PNG', margin, y, imgW, imgH);
+          y += imgH + 6;
+
+          // Poznámka
+          doc.setFont('helvetica','normal'); doc.setFontSize(9);
+          doc.setTextColor(100);
+          doc.text('Pozn.: 2024 = světlejší a širší sloupce, 2025 = tmavší a tenčí sloupce. Modrá = Objednávky (pravá osa), oranžová = Obrat (levá osa).', margin, y);
+          doc.setTextColor(0);
+
+          // Uložit
+          const safe = name.replace(/[^\w\-]+/g,'_').slice(0,60);
+          doc.save(`Karta_dodavatele_${safe}.pdf`);
+        }catch(e){
+          console.error(e);
+          alert('Nepodařilo se vygenerovat PDF.');
+        }
+      }, 250); // krátká prodleva na vykreslení grafu
     };
 
     window.exportCSV = function(){
