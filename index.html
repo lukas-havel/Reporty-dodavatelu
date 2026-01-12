@@ -84,7 +84,6 @@
       <div class="control">
         <label for="file">Nahrát Excel (.xls / .xlsx)</label>
         <div class="file-control">
-          <!-- rozšířený accept -->
           <input type="file" id="file" accept=".xlsx,.xls,.xlsm,.csv" />
         </div>
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
@@ -143,15 +142,15 @@
     </main>
   </div>
 
-  <!-- ========== KNIHOVNY (Chart.js z CDN primárně, XLSX lokálně) ========== -->
-  <!-- Chart.js: CDN primárně + lokální fallback -->
-  https://unpkg.com/chart.js@4.4.1/dist/chart.umd.min.js</script>
+  <!-- ========== KNIHOVNY (Chart.js z jsDelivr primárně, XLSX lokálně) ========== -->
+  <!-- Chart.js: CDN (jsDelivr) + lokální fallback -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/"></script>
   <script>
     (function(){
       if (typeof window.Chart === 'undefined') {
         var s = document.createElement('script');
         s.src = '/web/vendor/chart.umd.min.js';
-        s.onload = function(){ console.warn('Chart.js načten lokálně.'); };
+        s.onload = function(){ console.warn('Chart.js načten lokálně (fallback).'); };
         s.onerror = function(){ console.error('Chart.js se nepodařilo načíst ani z CDN, ani lokálně.'); };
         document.head.appendChild(s);
       }
@@ -172,7 +171,7 @@
     })();
   </script>
 
-  <!-- ===== Pomocné „waitFor“ (čekání na XLSX/Chart) ===== -->
+  <!-- ===== Pomocné „waitFor“ (čekání na knihovny) ===== -->
   <script>
     function waitFor(testFn, {interval=50, timeout=8000} = {}){
       return new Promise(function(resolve, reject){
@@ -190,15 +189,15 @@
 
   <!-- ========== HLAVNÍ LOGIKA (window.*) ========== -->
   <script>
-    // Formátování
+    /* Formátování */
     var fmtInt = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 0 });
     var fmtCZK = new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' });
 
-    // Stav
+    /* Stav */
     var suppliers = []; // { name, rev24, ord24, rev25, ord25 }
     var chart = null;
 
-    // DOM
+    /* DOM */
     var fileEl      = document.getElementById('file');
     var fileInfoEl  = document.getElementById('fileInfo');
     var statusEl    = document.getElementById('status');
@@ -213,7 +212,7 @@
     var kpiOrdVal   = document.getElementById('kpiOrdVal');
     var kpiOrdDelta = document.getElementById('kpiOrdDelta');
 
-    // Zobrazení stavu knihoven
+    /* Info o knihovnách */
     (function showLibs(){
       var scripts = document.getElementsByTagName('script');
       var chartSrc='n/a', xlsxSrc='n/a';
@@ -228,23 +227,23 @@
         ' · Sources: chart=' + chartSrc + ', xlsx=' + xlsxSrc;
     })();
 
-    // Auto načtení po výběru souboru
+    /* Auto načtení po výběru souboru */
     fileEl.addEventListener('change', function(){ window.loadSelectedFile(); });
 
-    // === GLOBÁLNÍ FUNKCE ===
+    /* Globální funkce */
     window.loadSelectedFile = function(){
       var f = fileEl.files && fileEl.files[0] ? fileEl.files[0] : null;
       if (!f){ statusEl.textContent = 'Stav: nejprve vyber soubor (.xls/.xlsx/.xlsm/.csv)'; return; }
       fileInfoEl.textContent = 'Soubor: ' + f.name + ' (' + fmtInt.format(f.size) + ' B)';
       statusEl.textContent = 'Stav: načítám XLSX…';
 
-      // ✅ Čekáme jen na XLSX (Chart až při kreslení)
+      /* Čekáme jen na XLSX (Chart až při kreslení) */
       waitForXLSX().then(function(){
         document.getElementById('libStatus').textContent =
           'XLSX: ' + (typeof window.XLSX) + ' · Chart: ' + (typeof window.Chart);
         window.processFile(f);
       }).catch(function(e){
-        errorEl.textContent = 'XLSX se nenačetla včas. Zkus obnovit stránku (?v=41) nebo prověř síť.';
+        errorEl.textContent = 'XLSX se nenačetla včas. Zkus obnovit stránku (?v=42) nebo prověř síť.';
         statusEl.textContent = 'Stav: chyba.';
         console.error(e);
       });
@@ -323,7 +322,7 @@
       var name = selEl.value;
       if (!name) return;
 
-      // ✅ nyní čekáme jen na Chart (může přicházet z CDN nebo lokálně)
+      /* Čekáme na Chart (může být z CDN nebo lokálně) */
       waitForChart().then(function(){
         var s = null;
         for (var i = 0; i < suppliers.length; i++){
@@ -368,7 +367,7 @@
           }
         });
 
-        // KPI (Δ 2025 vs 2024)
+        /* KPI (Δ 2025 vs 2024) */
         var dRev = s.rev25 - s.rev24;
         var dOrd = s.ord25 - s.ord24;
         var pRev = s.rev24 ? (dRev / s.rev24 * 100) : null;
@@ -406,7 +405,7 @@
       document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     };
 
-    // Utility
+    /* Utility */
     window.detectHeaderStart = function(rows){
       if (!rows || !rows.length) return 0;
       var f = rows[0];
